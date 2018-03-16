@@ -1,0 +1,47 @@
+# 3.1 - EXTRACTION OF UNMAPPED READS - LINUX
+
+ERSes=$(ls -d ERS4*/)
+
+for ERS in $ERSes
+do cd $ERS
+pwd
+
+ls *.bam > bamlist.txt
+first_bam=$(head -n 1 bamlist.txt)
+other_bams=$(tail -n +2 bamlist.txt)
+
+k=$(basename $first_bam _premerge.bam)
+samtools view -f 4 -b $first_bam | samtools bam2fq - | /share/apps/genomics/fastx_toolkit-0.0.14/bin/fastq_to_fasta - -n > ${k}.fasta
+
+for i in $other_bams
+do
+samtools view -f 4 -b $i | samtools bam2fq - | /share/apps/genomics/fastx_toolkit-0.0.14/bin/fastq_to_fasta - -n >> ${k}.fasta
+
+rm *.bam
+rm bamlist.txt
+
+done
+
+# 3.2 - ALIGNMENT AGAINST 16S RRNA BACTERIAL DATABASE - LINUX
+
+ERSes=$(ls -d ERS4*/)
+
+for ERS in $ERSes
+do cd $ERS
+pwd
+
+for k in *.fasta
+
+do
+
+j=$(basename $k .fasta)
+
+blat /home/eambrose/MOUNT_Oryza_MAGIC_global/16SRNA_DATABASE/RM_26557.SunNov261737092017/current_Bacteria_unaligned_new_fixed.fa $k -ooc=/home/eambrose/MOUNT_Oryza_MAGIC_global/16SRNA_DATABASE/11.ooc -out=blast8 ../../4Temperate_blat_outputs/$j.blast8
+
+done
+
+hostname
+date
+
+cd ..
+done
