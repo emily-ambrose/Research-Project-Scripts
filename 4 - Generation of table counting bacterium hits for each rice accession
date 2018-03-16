@@ -1,0 +1,78 @@
+# 4 - GENERATION OF TABLE COUNTING BACTERIUM HITS FOR EACH RICE ACCESSION - R
+
+blast8s <- list.files(path="/SAN/mottlab/Oryza3000_raw/4Temperate_blat_outputs", pattern="\\.blast8$", all.files=FALSE, full.names=TRUE)
+options(scipen=999)
+
+get_subjects<-function(blast8name){
+  blast8 <- read.table(blast8name,header=FALSE,as.is=TRUE)
+  colnames(blast8) = c("Query id","Subject id","% identity","alignment length","mismatches","gap openings","q. start","q. end","s. start","s. end","e-value","bit score")
+  return(blast8[blast8$`e-value`>0.0000000000000000001,"Subject id"])
+}
+
+output<-lapply(blast8s,get_subjects)
+save(output, file="subject_ids_Temperate.RData")
+b <- basename(blast8s)
+save(b, file="file_list_Temperate.RData")
+
+load("/home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/file_list_Temperate.RData")
+load("/home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/subject_ids_Temperate.RData")
+
+Temperate_files <- b
+Temperate_endosymbionts <- output
+
+load("/home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/file_list_Japonica.RData")
+load("/home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/subject_ids_Japonica.RData")
+          
+Japonica_files <- b 
+Japonica_endosymbionts <- output
+          
+b <- c(Temperate_files, Japonica_files)
+output <- c(Temperate_endosymbionts, Japonica_endosymbionts)
+
+endosymbiont.table<- function(output){
+  names(output)<-b
+  counts = lapply(output, table)
+  all = c() 
+  x = lapply(counts, function(a) {
+    n = names(a)
+    all <<- c(all, names(a)) 
+    return(n)
+  })
+  xx = sort(unique(all))
+  count.sym = matrix(0, nrow = length(output), ncol = length(xx))
+  colnames(count.sym) = xx
+  rownames(count.sym) = names(output)
+
+for (i in 1:length(counts)) {
+    count.sym[i, match(names(counts[[i]]), xx, nomatch = 0)] = counts[[i]]
+  }
+return(count.sym)
+}
+
+m3000=endosymbiont.table(output)
+
+m3000_over10hits <- m3000[rowSums(m3000)>10,]
+
+combined_line_count <- read.delim("/home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/combined_line_count.txt", header=FALSE, row.names=1)
+colnames(combined_line_count) = "fasta_count"
+
+names <- rownames(m3000_over10hits)
+rownames(m3000_over10hits) <- NULL
+m3000_over10hits <- cbind(names, m3000_over10hits)
+names <- rownames(combined_line_count)
+rownames(combined_line_count) <- NULL
+combined_line_count <- combined_line_count/2
+combined_line_count <- cbind(names, combined_line_count)
+
+m3000_plus_lc <- merge(m3000_over10hits, combined_line_count, by="names")
+m3000_plus_lc_new <- m3000_plus_lc[,-1]
+rownames(m3000_plus_lc_new) <- m3000_plus_lc[,1]
+
+m3000_plus_lc_new_numeric<-apply(m3000_plus_lc_new,2,as.integer)
+rownames(m3000_plus_lc_new_numeric)<-rownames(m3000_plus_lc_new)
+m3000_plus_lc_new_numeric[,ncol(m3000_plus_lc_new_numeric)]
+
+m3000_normalised <- m3000_plus_lc_new_numeric[,-ncol(m3000_plus_lc_new_numeric)]/m3000_plus_lc_new_numeric[,"fasta_count"]
+
+save(m3000_normalised, file="m3000_normalised.RData")
+write.table(m3000_normalised,file="home/eambrose/MOUNT_Oryza3000_raw/5Endosymbiont_table/m3000_normalised.txt", quote=FALSE, row.names=TRUE, col.names=TRUE)
