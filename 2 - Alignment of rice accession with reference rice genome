@@ -1,0 +1,37 @@
+#FOR ALIGNMENT OF RICE ACCESSIONS AGAINST REFERENCE RICE GENOME
+
+outdir=/SAN/mottlab/Oryza3000_raw/3Temperate_align/
+ref=/SAN/mottlab/Oryza3000_raw/REFERENCE/Oryza_sativa.IRGSP-1.0.dna.toplevel.fa
+stampyref=/SAN/mottlab/Oryza3000_raw/REFERENCE/Oryza_sativa.IRGSP-1.0.dna.toplevel
+numthreads=1
+log=/SAN/mottlab/Oryza3000_raw/3Temperate_align/scripts/log
+    
+cd $outdir
+    
+samples=$(ls ../2Temperate/)
+samp=$(printf '%s\n' $samples | cut -d$'\n' -f $SGE_TASK_ID)
+    
+mkdir -p $samp 
+    
+fastqs_1=$(find ../2Temperate/$samp/ -name "*_1.fastq.gz" -type f)
+
+for fastq_1 in $fastqs_1
+do
+ tmp=$(basename $fastq_1)
+ prefix=${tmp%_1.fastq.gz}
+ echo "Aligning ${prefix}_1.fastq.gz"
+ bwa aln -t $numthreads $ref $fastq_1 1> $outdir/$samp/${prefix}_1.sai 2> $log/$prefix.bwaaln_1.log
+ echo "Aligning ${prefix}_2.fastq.gz"
+ fastq_2=$(echo $fastq_1 | sed 's/_1/_2/')
+ bwa aln -t $numthreads $ref $fastq_2 1> $outdir/$samp/${prefix}_2.sai 2> $log/$prefix.bwaaln_2.log
+ echo "Combining alignments for $prefix"
+ bwa sampe $ref $outdir/$samp/${prefix}_1.sai $outdir/$samp/${prefix}_2.sai $fastq_1 $fastq_2 2> $log/$prefix.bwasampe.log | \
+ samtools view -Sb - > $outdir/$samp/${prefix}_premerge.bam
+# echo "Stampy realignment on $prefix"
+# stampy -g $stampyref -h $stampyref -t$numthreads --bamkeepgoodreads -M $outdir/$samp/${prefix}_premerge.bam -o $outdir/$samp/${prefix}_premerge.stampy.bam 2> $log/$prefi
+x.stampy.log
+
+rm $outdir/$samp/${prefix}_1.sai
+rm $outdir/$samp/${prefix}_2.sai
+
+done
