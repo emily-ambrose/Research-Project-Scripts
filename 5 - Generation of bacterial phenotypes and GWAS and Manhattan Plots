@@ -1,0 +1,203 @@
+# 5.1 - GENERATION OF BACTERIAL PHENOTYPES - R
+
+library(parallel)
+
+make.fastlmm.phens <- function( lookup.file="rice.lookup.csv", fam.file="Nipponbare_indel.fam", phen.file="3kRG_PhenotypeData_v20170411.csv", phenos=c("AWPR_REPRO","CUDI_C
+ODE_REPRO","CULT_CODE_REPRO","CUNO_CODE_REPRO","LLT_CODE","PLT_CODE_POST","SDHT_CODE","APANTH_REPRO","APSH","APCO_REV_POST","APCO_REV_REPRO","AWCO_LREV","AWCO_REV","AWDIST
+","BLANTHPR_VEG","BLANTHDI_VEG","BLPUB_VEG","BLSCO_ANTH_VEG","BLSCO_REV_VEG","CCO_REV_VEG","CUAN_REPRO","ENDO","FLA_EREPRO","FLA_REPRO","INANTH","LIGCO_REV_VEG","LIGSH","L
+PCO_REV_POST","LPPUB","LSEN","NOANTH","PEX_REPRO","PTH","SCCO_REV","SECOND_BR_REPRO","SLCO_REV","SPKF","SLLT_CODE","AUCO_REV_VEG","BLCO_REV_VEG","CUST_REPRO","INCO_REV_REP
+RO","LA","NOCO_REV","PA_REPRO","PSH","PTY")) {
+                   lookup = read.csv(lookup.file)
+                   fam = read.table(fam.file,head=F)
+                   ids = sort(intersect(fam$V1, lookup$X3K_DNA_IRIS_UNIQUE_ID))
+                   fam = fam[match( ids, fam$V1, nomatch=0),]
+                   lookup = lookup[match(ids, lookup$X3K_DNA_IRIS_UNIQUE_ID, nomatch=0),]
+
+                   lookup.name = lookup$Genetic_Stock_varname
+                   lookup.id = lookup$X3K_DNA_IRIS_UNIQUE_ID
+
+                   pheno = read.csv(phen.file)
+                   pheno.name = pheno$NAME
+                   
+                   outdir = "./PHENS"
+                   for ( p in phenos ) {
+                       df = data.frame( fam=fam$V1, id=fam$V2, phen=rep(NA,length(fam$V1)))
+                       ph = pheno[[p]]
+                       mm = match(lookup.name, pheno.name)
+                       ph = ph[mm]
+                       df = data.frame( fam=lookup.id, id=lookup.id, phen=ph)
+                       df = df[!is.na(df$phen),]
+                       fname =  paste0( outdir, "/", p, ".txt")
+                       cat(fname, "\n")
+                       write.table(df, fname, sep=" ", row=F, col=F, quote=F)
+                    }
+}
+
+# 5.2 - NORMALISATION OF BACTERIUM HITS - R
+
+make.fastlmm.endosymbionts <- function( endosymbiont.count.file="m3000_plus_lc_new_numeric.RData",  lookup.file="rice.lookup.csv", fam.file="Nipponbare_indel.fam",ERRlooku
+p.file="ERS2IRIS.csv", threshold=0.9, outdir="./ENDOSYMBIONT.RESIDUALS") {
+dir.create(outdir)
+                   lookup = read.csv(lookup.file)
+                   fam = read.table(fam.file,head=F)
+                   ids = sort(intersect(fam$V1, lookup$X3K_DNA_IRIS_UNIQUE_ID))
+                   fam = fam[match( ids, fam$V1, nomatch=0),]
+                   lookup = lookup[match(ids, lookup$X3K_DNA_IRIS_UNIQUE_ID, nomatch=0),]
+
+                   ERR = read.csv(ERRlookup.file)
+                   err.ids = intersect( ids, ERR$Sample.Alias)
+                   lookup = lookup[ match(err.ids, lookup$X3K_DNA_IRIS_UNIQUE_ID, nomatch=0),]
+                   lookup.name = lookup$Genetic_Stock_varname
+                   lookup.id = lookup$X3K_DNA_IRIS_UNIQUE_ID
+                   ERR = ERR[match(err.ids, ERR$Sample.Alias,nomatch=0),]
+                   lookup$err = ERR$Run.Acc
+                   lookup$err.blast8 = paste0(lookup$err, ".blast8")
+                   load(endosymbiont.count.file)
+
+                   ids = intersect( rownames(m3000_plus_lc_new_numeric) , lookup$err.blast8)
+                   lookup = lookup[match(ids, lookup$err.blast8,nomatch=0),]
+                   fam = fam[match( lookup$X3K_DNA_IRIS_UNIQUE_ID, fam$V1, nomatch=0),]
+                   m3000_plus_lc_new_numeric = m3000_plus_lc_new_numeric[match(ids,rownames(m3000_plus_lc_new_numeric),nomatch=0),]
+                   rownames(m3000_plus_lc_new_numeric) = lookup$X3K_DNA_IRIS_UNIQUE_ID
+                   
+m3000 <- m3000_plus_lc_new_numeric[,-ncol(m3000_plus_lc_new_numeric)]
+save(m3000,file="Endosymbiont.Counts.Renamed.RData")
+                   
+                   rs = m3000_plus_lc_new_numeric[,"fasta_count"] # fasta count used for normalisation 
+                   cs = apply(m3000, 2, function(x) {mean(x>0)} ) # the fraction of lines with at least one read 
+                   counts = m3000[,cs>threshold] # only use endo with at least 90% of lines carrying it
+                   GWA.groups = lookup$GWA_groups
+n = 1
+                   pcs = read.table("plink.eigenvec")
+                   pcs = pcs[match(fam$V1, pcs$V1, nomatch=0),]
+                   pcs1234 = as.matrix(pcs[,c(3:18)]) # use first 15 pcs
+                   resids = apply( counts, 2, function( x, rs, GWA.groups, pcs1234 ) {
+                          ff = lm( x ~ GWA.groups * rs + pcs1234 )
+                          n <<- n+1
+                          if ( n < 10 ) print(anova(ff))
+                          r = resid(ff)
+                          rr = rank(r)/(length(r)+1) # quantile normalisation
+                          qn = qnorm(rr)
+                          return(qn) }, rs, GWA.groups, pcs1234 )
+                   save(resids,file="Endosymbiont.resids.RData") # the residuals for just the common endos
+                   
+                   phenos = colnames(resids) # this should reallly be all the endos passing the above filters
+
+                   
+                   for ( p in phenos ) {
+                       df = data.frame( fam=fam$V1, id=fam$V2, phen=resids[,p])
+                       fname =  paste0( outdir, "/", p, ".txt")
+                       cat(fname, "\n")
+                       write.table(df, fname, sep=" ", row=F, col=F, quote=F)
+                    }
+                   return(lookup)
+}
+
+# 5.3 - GWAS - R
+
+process.GWAS <-function( data.dir="./TOP_10_ENDOS/", out.dir="./GWAS4/", out.pval.thresh=1,  mc.cores=48 ) {
+dir.create(out.dir)          
+files = list.files( path=data.dir, full=TRUE )
+             if ( !file.exists(out.dir)) 
+             n = 0;
+             mclapply( files, function( f , out.dir ) {
+base = basename(f)
+                 base = sub(".txt", "", base, fixed=TRUE)
+                 outf = paste0( out.dir, "/", base, ".txt")
+                 outf2 = paste0( out.dir, "/", base, ".done")
+                 if ( ! file.exists( outf2 ) ) {
+                                 cmd = paste0( "(/usr/local/genetics/FaSTLMM.207c.Linux/Linux_MKL/fastlmmc -bfile pruned_v2.1.maf.endo.05 -bfileSim pruned_v2.1.maf.end.05 
+ -pvaluePrintThreshold ", out.pval.thresh, "  -pheno ", f,   " -eigen ./EIGEN2/ -maxthreads 10 -out ", outf, "; touch ", outf2 , ")")
+                                 cat( base, "\n")
+                                 system(cmd)
+                                 }
+                 }, out.dir, mc.cores=mc.cores )
+
+
+             if ( 0 ) { #for ( f in files ) {
+
+                 base = basename(f)
+                 base = sub(".txt", "", base, fixed=TRUE)
+                 outf = paste0( out.dir, "/", base, ".txt")
+                 outf2 = paste0( out.dir, "/", base, ".done")
+                 if ( n<40 & ! file.exists( outf2 )  ){
+                                 cmd = paste0( "(/usr/local/genetics/FaSTLMM.207c.Linux/Linux_MKL/fastlmmc -bfile pruned_v2.1.maf.endo.05 -bfileSim pruned_v2.1.maf.endo.05
+ -pheno ", f,   " -eigen ./EIGEN2/  -out ", outf, "; touch ", outf2 , ")&" )
+                                 system(cmd)
+                                 }
+                n = n+1
+                
+                }
+} 
+
+# 5.4 - PRODUCTION OF MANHATTAN PLOTS
+
+make.plots <- function( dir = "./GWAS3" ) {
+           files = list.files( path=dir, pattern=".txt$", full=TRUE ) 
+for ( f in files ) {
+                   manhattan.plot( f, min.logP=0 ) 
+           }
+}
+manhattan.plot <- function(dir = "./GWAS3", min.logP=0, pdf.dir="./JPEGS_TOP10" ){ 
+
+               files = list.files(path=dir, pattern=".txt$", full=TRUE)
+               for (f in files ) {
+               man = read.delim(f)
+               if ( ! file.exists(pdf.dir) ) dir.create(pdf.dir)
+               chr = man$Chromosome
+               chrs = sort(unique(chr))
+               df = NULL
+               cum.bp = 0
+               for (ch in chrs ) {
+                  ss = man[man$Chromosome==ch,]
+                  r = order(ss$Position)
+                  ss = ss[r,]
+                  ss$CumPosition = ss$Position+cum.bp
+                  cum.bp = cum.bp + max(ss$Position)
+                  df = rbind(df, data.frame(Chromosome=ss$Chromosome, Position=ss$CumPosition, logP=-log10(ss$Pvalue)))
+               }
+               pos.max = max(df$Position)
+               logP.max = max(df$logP)
+               cat( f, logP.max, "\n")
+               N = 1 + nrow(df)
+               exp.logP = rev(-log10(seq(1/N,(N-1)/N, 1/N)))
+               df2 = df[df$logP>min.logP,]
+               jpeg.file = paste0( pdf.dir, "/", sub(".txt", ".jpeg", basename(f), fixed=TRUE))
+               save(man, file=sub(".txt", ".RData", f, fixed=TRUE))
+
+               cat(jpeg.file,"\n")
+jpeg(jpeg.file, res=300, width=2500, height=2500)
+               par(mfrow=c(3,1))
+               odd = df2$Chromosome %% 2==1
+               
+               plot( df2$Position[odd], df2$logP[odd], type="p", pch=20, cex=0.1,xlim=c(0,pos.max), ylim=c(0,logP.max), xlab="Position", ylab="logP", main=f,)
+               points( df2$Position[!odd], df2$logP[!odd], pch=20, cex=0.1,col="red")
+               plot( exp.logP, sort(df$logP), t="p", pch=20, cex=0.1, xlab="expected LogP", ylab="observed LogP")
+               abline(a=0,b=1,col="red")
+               dev.off()
+}
+}
+                          
+region.plot <- function(in.file="./GWAS3/S001022751.txt", chr=11, from.bp=1, to.bp=1e9, min.logP=0, pdf.dir="./ZOOMED_PLOTS" ){ 
+               man = read.delim(in.file)
+               if ( ! file.exists(pdf.dir) )  dir.create(pdf.dir)
+                b = basename(in.file)
+                b = sub(".txt", "", b, fixed=TRUE)
+               df = man[man$Chromosome==chr & man$Position>=from.bp & man$Position<=to.bp,]
+               df$logP = -log10(df$Pvalue)
+               pos.max = max(df$Position)
+               logP.max = max(df$logP)
+               cat( in.file, logP.max, chr, from.bp, to.bp, "\n")
+
+               df2 = df[df$logP>min.logP,]
+               jpeg.file = paste0( pdf.dir, "/", sub(".txt", ".jpeg", basename(in.file), fixed=TRUE))
+
+               cat(jpeg.file,"\n")
+               jpeg(jpeg.file, res=300, width=2500, height=2500)
+               par(mfrow=c(3,1))
+               
+               plot( df2$Position, df2$logP, type="p", pch=20, cex=0.1,xlim=range(df2$Position), ylim=c(0,logP.max), xlab="Position", ylab="logP", main=paste(b,"\nChromoso
+me", chr))
+
+ dev.off()
+}
