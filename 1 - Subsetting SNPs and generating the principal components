@@ -1,4 +1,4 @@
-# 1 - Subsetting SNPs and generating the principal components
+# SUBSETTING OF SNPS AND GENERATION OF PRINCIPAL COMPONENTS - LINUX
 
 ../MOTT/FASTLMM/PLINK/plink --bfile pruned_v2.1.maf.endo. --out pruned_v2.1.maf.endo --make-bed --keep ../MOTT/FASTLMM/ENDOSYMBIONT.RESIDUALS/S000323146.txt ./PLINK/plink --bfile pruned_v2.1 --out pruned_v2.1.maf.05 --maf 0.05 --make-bed
 ../MOTT/FASTLMM/PLINK/plink --bfile pruned_v2.1.maf.endo --out pruned_v2.1.maf.endo.05 --maf 0.05 --make-bed --keep ../MOTT/FASTLMM/ENDOSYMBIONT.RESIDUALS/S000323146.txt
