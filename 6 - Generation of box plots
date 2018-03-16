@@ -1,0 +1,35 @@
+# 6.1 - COMBINATION OF GENOTYPE OF SNP WITH CORRESPONDING PHENOTYPE - R
+
+/data/scratch/MOTT/FASTLMM/PLINK/plink --bfile pruned_v2.1.maf.endo.05 --snp 125118790 --recode --out 125118790 --pheno 
+/data/scratch/MOTT/FASTLMM/ENDOSYMBIONT.RESIDUALS/S001020421.txt
+
+files = list.files(path=".", pattern=".ped$")
+
+for (f in files) {
+
+xx <- read.table(f)
+xx[,9] <- paste(xx[,7], xx[,8], sep="")
+xx[,7] <- NULL
+xx[,7] <- NULL
+
+write.table(xx, file=sub(".ped", "_amended.txt", f, fixed=TRUE), col.names=FALSE, row.names=FALSE)
+
+}
+
+# 6.2 - BOX PLOT - R
+
+files = list.files(path=".", pattern=".txt$")
+
+for (f in files) {
+
+p=read.table(f)
+ss = p[,7]== "GG" | p[,7]== "AA" 
+jpeg.file=sub("_amended.txt", ".jpeg", f, fixed=TRUE)
+jpeg(jpeg.file, res=300, width=2500, height=2500)
+main_title = sub("_amended.txt", "", f, fixed=TRUE)
+main_title = paste("SNP", main_title)
+g=as.factor(as.character(p[,7][ss]))
+boxplot(p[,6][ss] ~ g, xlab="Genotype", ylab="Phenotypic value", main=main_title, notch=TRUE)
+dev.off()
+
+}
