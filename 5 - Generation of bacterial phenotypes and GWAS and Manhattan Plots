@@ -130,7 +130,7 @@ base = basename(f)
                 }
 } 
 
-# 5.4 - PRODUCTION OF MANHATTAN PLOTS
+# 5.4 - PRODUCTION OF MANHATTAN PLOTS - R
 
 make.plots <- function( dir = "./GWAS3" ) {
            files = list.files( path=dir, pattern=".txt$", full=TRUE ) 
